@@ -5,21 +5,27 @@ import numpy as np
 import unittest
 
 
-class TestOGMCGraph(unittest.TestCase):
+class TestOGMC(unittest.TestCase):
     def setUp(self):
+        """Set up a fresh OGMCGraph instance and an associated OGMCluster instance for each test."""
         self.graph = OGMCGraph()
+        self.cluster = OGMCluster(self.graph)
 
+    # Tests related to OGMCGraph
     def test_initialization(self):
+        """Test that a new OGMCGraph instance is correctly initialized."""
         self.assertEqual(len(self.graph.samples), 0)
         self.assertEqual(len(self.graph.clusters), 0)
         self.assertEqual(len(self.graph.connections), 0)
 
     def test_add_sample(self):
+        """Test adding a single sample to the graph."""
         sample = normalize(np.array([1.0] * 512).reshape(1, -1))[0]
         self.graph.add_sample(sample)
         self.assertTrue(np.allclose(self.graph.samples[0], sample))
 
     def test_connect_clusters(self):
+        """Test connecting two clusters in the graph."""
         cluster1 = OGMCluster(self.graph)
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
@@ -29,6 +35,7 @@ class TestOGMCGraph(unittest.TestCase):
         self.assertIn(0, self.graph.connections[1])
 
     def test_disconnect_clusters(self):
+        """Test disconnecting two previously connected clusters in the graph."""
         cluster1 = OGMCluster(self.graph)
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
@@ -39,6 +46,7 @@ class TestOGMCGraph(unittest.TestCase):
         self.assertNotIn(0, self.graph.connections[1])
 
     def test_create_cluster(self):
+        """Test creating a new cluster in the graph."""
         sample = normalize(np.array([1.0] * 512).reshape(1, -1))[0]
         idx = self.graph.add_sample(sample)  # creates 0th clust
         cluster_id = self.graph.create_cluster(idx)  # creates 1st clust
@@ -46,6 +54,7 @@ class TestOGMCGraph(unittest.TestCase):
         self.assertIn(cluster_id, self.graph.clusters)
 
     def test_get_connected_clusters(self):
+        """Test retrieving clusters connected to a given cluster."""
         cluster1 = OGMCluster(self.graph)
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
@@ -54,13 +63,9 @@ class TestOGMCGraph(unittest.TestCase):
         connected_clusters = self.graph.get_connected_clusters(0)
         self.assertIn(1, connected_clusters)
 
-
-class TestOGMCluster(unittest.TestCase):
-    def setUp(self):
-        self.graph = OGMCGraph()
-        self.cluster = OGMCluster(self.graph)
-
+    # Tests related to OGMCluster
     def test_add_sample_cluster(self):
+        """Test adding a single sample to a cluster."""
         sample = normalize(np.array([1.0] * 512).reshape(1, -1))[0]
         self.graph.add_sample(sample)
         self.cluster.add_sample_by_index(0)
@@ -69,19 +74,17 @@ class TestOGMCluster(unittest.TestCase):
         self.assertTrue(np.allclose(self.cluster.samples()[0], sample))
 
     def test_centroid(self):
+        """Test centroid computation for a cluster."""
         sample1 = np.array([1.0] * 512)
         sample2 = np.array([2.0] * 512)
         self.graph.add_sample(sample1)
         self.graph.add_sample(sample2)
-
         cluster0 = self.graph.clusters[0]
-
-        # Because of normalization, sample1 and sample2 should be equal, which
-        # means the centroid should be at the same location as sample1
         expected_centroid = normalize(sample1.reshape(1, -1))
         self.assertTrue(np.allclose(cluster0.centroid, expected_centroid))
 
     def test_multiple_distant_samples(self):
+        """Test clustering of multiple distant samples."""
         # Set the random seed for consistency
         np.random.seed(42)
 
@@ -114,7 +117,8 @@ class TestOGMCluster(unittest.TestCase):
         # Verify clusters were created
         self.assertEqual(len(self.graph.clusters), 10, "Expected 10 clusters!")
 
-    def test_add_samples_within_fusion_threshold(self):
+    def test_fusing_clusters(self):
+        """Test the behavior when clusters are fused."""
         # First, add the distant samples to make some clusters
         np.random.seed(42)
 

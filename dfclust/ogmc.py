@@ -78,19 +78,38 @@ class OGMCGraph:
     @property
     def _labels(self) -> np.ndarray:
         """
-        Return the labels (i.e., cluster IDs) for each sample.
+        Return the labels (i.e., cluster IDs) for each sample, taking connections into account.
 
         Returns:
         - np.ndarray: An array where the value at index i represents the cluster ID of the i-th sample.
         """
         labels = np.empty(len(self.samples), dtype=int)
 
+        # Cache for clusters that have been already processed
+        processed_clusters = set()
+
         for cluster_id, cluster in self.clusters.items():
-            if (
-                cluster is not None
-            ):  # Make sure the cluster has not been fused (set to None)
-                for sample_idx in cluster.sample_indices:
-                    labels[sample_idx] = cluster_id
+            if cluster_id in processed_clusters:
+                continue
+
+            # If cluster is not None and it's not been processed
+            if cluster:
+                # Get the connected clusters for the current cluster
+                connected_clusters = self.get_connected_clusters(cluster_id)
+
+                # Add the current cluster to the list
+                connected_clusters.add(cluster_id)
+
+                # Find the cluster with the smallest ID among the connected clusters
+                representative_id = min(connected_clusters)
+
+                for conn_cluster_id in connected_clusters:
+                    # Mark the cluster as processed
+                    processed_clusters.add(conn_cluster_id)
+
+                    # Assign the representative ID to all samples in the connected cluster
+                    for sample_idx in self.clusters[conn_cluster_id].sample_indices:
+                        labels[sample_idx] = representative_id
 
         return labels
 
@@ -272,6 +291,9 @@ class OGMCGraph:
         }
         dists.pop(u_idx)
 
+        if len(dists) == 0:
+            return
+
         # Determine if the number of samples in the min_cluster is greater than the threshold
         min_idx = min(dists, key=dists.get)
         min_clust = self.clusters[min_idx]
@@ -291,15 +313,13 @@ class OGMCGraph:
                 # Connect uclust and min_clust
                 self.connect_clusters(u_idx, min_idx)
 
-            self._check_connections()
-
         elif u_min_dist <= self.fusion:
             # Fuse u_clust and min_clust
             self.fuse_clusters(u_idx, min_idx)
 
         elif (u_min_dist <= self.thr_wc) and len(min_clust) >= self.nsr:
             # Connect u_clust and min_clust
-            pass
+            self.connect_clusters(u_idx, min_idx)
 
         self._check_connections()
 
@@ -309,8 +329,17 @@ if __name__ == "__main__":
         features = npz["features"]
 
     clusterer = OGMCGraph()
-
+    min_samples = 10
     print()
     for i, f in enumerate(features):
         clusterer.add_sample(f)
-        print(f"\rAdded sample {i+1}/{features.shape[0]}", end="")
+        count = sum(
+            1
+            for value in clusterer.clusters.values()
+            if isinstance(value, list) and len(value) > min_samples
+        )
+        print(
+            f"\rsamples: {i+1}/{features.shape[0]}, clusters: {len(clusterer.clusters)}, "
+            f"clusters above {min_samples} samples: {count}",
+            end="",
+        )
