@@ -18,8 +18,8 @@ def compute_statistics(features, labels):
                 + np.eye(pairwise_distances.shape[0]) * np.max(pairwise_distances)
             )
             max_dist = np.max(pairwise_distances)
-            avg_dist = (
-                np.median(pairwise_distances)
+            avg_dist = np.median(
+                pairwise_distances
             )  # Divided by 2 because pairwise_distances counts each pair twice
             dist_stats[label] = (min_dist, max_dist, avg_dist)
     print("Min/max/med distances computation done.\n")
