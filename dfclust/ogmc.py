@@ -112,6 +112,32 @@ class OGMCGraph:
                         labels[sample_idx] = representative_id
 
         return labels
+    
+    @property
+    def _labels_with_noise(self, min_cluster_size=10):
+        """
+        Return labels for each sample, but if a label's count is less than X, 
+        replace it with -1 indicating noise.
+        
+        Parameters:
+        - X: int, minimum count threshold below which labels are treated as noise.
+        
+        Returns:
+        - np.ndarray: labels for each sample.
+        """
+        labels = self._labels  # Assuming _labels is a property/method that returns the original labels
+        
+        # Count occurrences of each label
+        unique_labels, counts = np.unique(labels, return_counts=True)
+        
+        # Find labels that occur less than X times
+        noise_labels = unique_labels[counts < min_cluster_size]
+        
+        # Replace infrequent labels with -1
+        for noise_label in noise_labels:
+            labels[labels == noise_label] = -1
+
+        return labels
 
     def create_cluster(self, idx: int) -> int:
         """Create a new cluster, add a sample to it, and store the cluster in the graph.
