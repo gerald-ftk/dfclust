@@ -43,7 +43,7 @@ class OGMCluster:
 
 
 class OGMCGraph:
-    """A class to represent the OGMC clusterer."""
+    """A class to represent the OGMC graph."""
 
     def __init__(
         self,
@@ -53,7 +53,7 @@ class OGMCGraph:
         thr_wc: float = 1.12,
     ) -> None:
         """
-        Initialize the OGMC clusterer.
+        Initialize the OGMC graph.
 
         Parameters:
         - fusion (float): The fusion threshold for clustering.
@@ -202,7 +202,7 @@ class OGMCGraph:
         # 2. Update cumulative sum of cluster1 (it's done automatically in add_sample)
 
         # 3. Update connections
-        for connected_cluster in self.connections[i2]:
+        for connected_cluster in set(self.connections[i2]):
             # If the connected cluster is not cluster1, update its connections
             if connected_cluster != i1:
                 self.connections[connected_cluster].remove(i2)
@@ -255,6 +255,10 @@ class OGMCGraph:
     def connect_clusters(self, i1, i2):
         """Connect two clusters."""
 
+        # Ensure clusters are not the same
+        if i1 == i2:
+            raise ValueError("A cluster cannot be connected to itself.")
+        
         # Ensure both clusters have an entry in the connections dictionary
         if i1 not in self.connections and (i1 in self.clusters):
             self.connections[i1] = set()
@@ -328,18 +332,16 @@ if __name__ == "__main__":
     with np.load("data/test.npz") as npz:
         features = npz["features"]
 
-    clusterer = OGMCGraph()
+    graph = OGMCGraph()
     min_samples = 10
     print()
     for i, f in enumerate(features):
-        clusterer.add_sample(f)
-        count = sum(
-            1
-            for value in clusterer.clusters.values()
-            if isinstance(value, list) and len(value) > min_samples
-        )
+        graph.add_sample(f)
+        unique, counts = np.unique(graph._labels, return_counts=True)
+        count = np.sum(counts > min_samples)
+
         print(
-            f"\rsamples: {i+1}/{features.shape[0]}, clusters: {len(clusterer.clusters)}, "
-            f"clusters above {min_samples} samples: {count}",
+            f"samples: {i+1}/{features.shape[0]}, clusters: {len(graph.clusters)}, "
+            f"clusters above {min_samples} samples: {count}\t\r",
             end="",
         )
