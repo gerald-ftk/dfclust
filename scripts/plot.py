@@ -13,8 +13,8 @@ else:
 sys.path.append(root_dir)
 import numpy as np
 from bokeh.plotting import show, figure
-from bokeh.models import HoverTool, ColumnDataSource
-from bokeh.transform import factor_cmap
+from bokeh.models import HoverTool, ColumnDataSource, CategoricalColorMapper
+from bokeh.palettes import Turbo256
 from dfclust.ogmc import OGMCGraph
 from umap import UMAP
 from tqdm import tqdm
@@ -24,10 +24,10 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("-c", "--cutoff", type=int, default=200)
+    ap.add_argument("-c", "--cutoff", type=int, default=5000)
     args = ap.parse_args()
 
-    print(f'loading npz from disk...')
+    print(f"loading npz from disk...")
     with np.load(f"{root_dir}/data/test.npz") as f:
         samples = f["features"][: args.cutoff]
 
@@ -45,22 +45,27 @@ if __name__ == "__main__":
 
     # Create a linear color mapping based on the number of unique labels
     unique_labels = np.unique(label_str)
-    cmap = factor_cmap('label', palette="Turbo256", factors=unique_labels.tolist())
-    # colors = [cmap[label] for label in label_str]
+
+    # Create a CategoricalColorMapper with the sparse palette
+    step_size = max(1, len(Turbo256) // len(unique_labels))
+    sparse_palette = [Turbo256[i] for i in range(0, len(Turbo256), step_size)][:len(unique_labels)]
+    mapper = CategoricalColorMapper(factors=unique_labels.tolist(), palette=sparse_palette)
 
     # Create a ColumnDataSource from the data
-    source_data = ColumnDataSource(data=dict(x=umap_2d[:, 0], y=umap_2d[:, 1], label=labels.astype(str)))
+    source_data = ColumnDataSource(
+        data=dict(x=umap_2d[:, 0], y=umap_2d[:, 1], label=labels.astype(str))
+    )
 
     # Plot with Bokeh
     p = figure(
         title="2D UMAP Projection with OGMCGraph Clustering",
         x_axis_label="UMAP1",
         y_axis_label="UMAP2",
-        sizing_mode='stretch_both'
+        sizing_mode="stretch_both",
     )
 
     # Create a scatter plot and capture the renderer to use for the hover tool
-    renderer = p.circle(x="x", y="y", source=source_data, color=cmap)
+    renderer = p.circle(x="x", y="y", source=source_data, color={'field': 'label', 'transform': mapper})
 
     # Add hover tool
     hover = HoverTool(renderers=[renderer], tooltips=[("Label", "@label")])
