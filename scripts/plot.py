@@ -24,7 +24,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument('-d', '--data', default='data/test.npz')
+    ap.add_argument("-d", "--data", default="data/test.npz")
     ap.add_argument("-c", "--cutoff", type=int, default=5000)
     args = ap.parse_args()
 
@@ -48,27 +48,31 @@ if __name__ == "__main__":
     # Create a linear color mapping based on the number of unique labels
     unique_labels = np.unique(label_str)
 
-    # Determine the step size for sampling from Turbo256 based on the number of unique labels minus one 
+    # Determine the step size for sampling from Turbo256 based on the number of unique labels minus one
     # (to account for the -1 label if it exists)
-    has_negative_one = '-1' in unique_labels
+    has_negative_one = "-1" in unique_labels
     num_labels = len(unique_labels) - 1 if has_negative_one else len(unique_labels)
     step_size = max(1, len(Turbo256) // num_labels)
     if has_negative_one:
-        unique_labels = [label for label in unique_labels if label != '-1']
+        unique_labels = [label for label in unique_labels if label != "-1"]
 
     # Create the sparse palette
-    sparse_palette = [Turbo256[i] for i in range(0, len(Turbo256), step_size)][:len(unique_labels)]
+    sparse_palette = [Turbo256[i] for i in range(0, len(Turbo256), step_size)][
+        : len(unique_labels)
+    ]
 
     # If -1 was in the original labels, append #000000 to the palette and '-1' back to the unique_labels
     if has_negative_one:
-        sparse_palette.append('#000000')
-        unique_labels.append('-1')
+        sparse_palette.append("#000000")
+        unique_labels.append("-1")
     mapper = CategoricalColorMapper(factors=unique_labels, palette=sparse_palette)
 
     # Create a ColumnDataSource from the data
     if image_urls is not None:
         source_data = ColumnDataSource(
-            data=dict(x=umap_2d[:, 0], y=umap_2d[:, 1], label=label_str, img_url=image_urls)
+            data=dict(
+                x=umap_2d[:, 0], y=umap_2d[:, 1], label=label_str, img_url=image_urls
+            )
         )
     else:
         source_data = ColumnDataSource(
@@ -84,7 +88,9 @@ if __name__ == "__main__":
     )
 
     # Create a scatter plot and capture the renderer to use for the hover tool
-    renderer = p.circle(x="x", y="y", source=source_data, color={'field': 'label', 'transform': mapper})
+    renderer = p.circle(
+        x="x", y="y", source=source_data, color={"field": "label", "transform": mapper}
+    )
 
     # Add hover tool, adjust based on the presence of image URLs
     if image_urls is not None:
@@ -98,13 +104,10 @@ if __name__ == "__main__":
                 >
                 <span style="font-weight:bold"> cluster: </span>@label</p>
                 </img>
-        """
+        """,
         )
     else:
-        hover = HoverTool(
-            renderers=[renderer],
-            tooltips=[("Label", "@label")]
-        )
+        hover = HoverTool(renderers=[renderer], tooltips=[("Label", "@label")])
     p.add_tools(hover)
 
     show(p)

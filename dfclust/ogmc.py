@@ -14,6 +14,7 @@ class OGMCluster:
         self.sample_indices = []
         self.sum: np.ndarray = np.zeros(512)  # Sum of samples in the cluster
         self.graph = graph
+        self.centroid = self.sum
 
     def add_sample_by_index(self, i: int) -> None:
         """
@@ -25,18 +26,13 @@ class OGMCluster:
 
         self.sample_indices.append(i)
         self.sum += self.graph.samples[i]
+        self.centroid = self.sum / len(self.sample_indices)
 
     def samples(self):
         return [self.graph.samples[i] for i in self.sample_indices]
 
     def __len__(self):
         return len(self.sample_indices)
-
-    @property
-    def centroid(self):
-        if len(self.sample_indices) == 0:
-            return None
-        return self.sum / len(self.sample_indices)
 
     def __len__(self) -> int:
         return len(self.sample_indices) - 1
@@ -278,6 +274,8 @@ class OGMCGraph:
                 # If connection is a single value, it means the cluster doesn't exist anymore
                 del self.connections[connection]
 
+        # if invalid_connections:
+        #     print(invalid_connections)
         return invalid_connections  # Optionally return the list of invalid connections for debugging/info
 
     def connect_clusters(self, i1, i2):
