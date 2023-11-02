@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.spatial.distance import euclidean, cdist
+import torch
 from sklearn.preprocessing import normalize
 from typing import List, Dict, Set
 
@@ -7,14 +7,17 @@ from typing import List, Dict, Set
 class OGMCluster:
     """A class to represent a single cluster within OGMC."""
 
-    def __init__(self, graph: "OGMCGraph") -> None:
+    def __init__(self, graph: "OGMCGraph", device="cuda") -> None:
         """
         Initialize the OGMCluster.
         """
+
+        self.device = device
+
         self.sample_indices = []
         self.sum: np.ndarray = np.zeros(512)  # Sum of samples in the cluster
         self.graph = graph
-        self.centroid = self.sum
+        self.centroid: torch.Tensor = torch.from_numpy(self.sum).to(device)
 
     def add_sample_by_index(self, i: int) -> None:
         """
@@ -26,7 +29,9 @@ class OGMCluster:
 
         self.sample_indices.append(i)
         self.sum += self.graph.samples[i]
-        self.centroid = self.sum / len(self.sample_indices)
+        self.centroid = torch.from_numpy(self.sum / len(self.sample_indices)).to(
+            self.device
+        )
 
     def samples(self):
         return [self.graph.samples[i] for i in self.sample_indices]
@@ -47,6 +52,7 @@ class OGMCGraph:
         nsr: int = 5,
         thr_sc: float = 0.99,
         thr_wc: float = 1.12,
+        device="cuda",
     ) -> None:
         """
         Initialize the OGMC graph.
@@ -64,6 +70,9 @@ class OGMCGraph:
         self.nsr = nsr
         self.thr_sc = thr_sc
         self.thr_wc = thr_wc
+
+        # gpu device
+        self.device = device
 
         # Increment this counter as new clusters are added
         self.id_counter = 0
@@ -165,6 +174,7 @@ class OGMCGraph:
         Returns:
         - int: The index of the added sample within the graph.
         """
+
         # Normalize the sample
         fn = normalize(f.reshape(1, -1))
         self.samples.append(fn[0])
@@ -180,9 +190,10 @@ class OGMCGraph:
             *[(k, c.centroid) for k, c in self.clusters.items() if c is not None]
         )
 
-        centroids = np.array(centroids)
+        centroids = torch.vstack(centroids)
+        ft = torch.from_numpy(fn).to(self.device)
 
-        cdists = cdist(fn, centroids).flatten()
+        cdists = torch.cdist(ft, centroids).flatten().detach().cpu().numpy()
         dists = {i: dist for i, dist in zip(valid_keys, cdists)}
 
         min_idx = min(dists, key=dists.get)  # index of closest cluster centroid
@@ -322,9 +333,9 @@ class OGMCGraph:
         valid_keys, centroids = zip(
             *[(k, c.centroid) for k, c in self.clusters.items() if c is not None]
         )
-        centroids = np.array(centroids)
+        centroids = torch.vstack(centroids)
 
-        cdists = cdist(u_clust.centroid.reshape(1, -1), centroids).flatten()
+        cdists = torch.cdist(u_clust.centroid.reshape(1, -1), centroids).flatten().detach().cpu().numpy()
         dists = {i: dist for i, dist in zip(valid_keys, cdists)}
 
         # Remove u_func's centroid from the dict
