@@ -1,5 +1,5 @@
 import numpy as np
-from scipy.spatial.distance import euclidean
+from scipy.spatial.distance import euclidean, cdist
 from sklearn.preprocessing import normalize
 from typing import List, Dict, Set
 
@@ -166,8 +166,8 @@ class OGMCGraph:
         - int: The index of the added sample within the graph.
         """
         # Normalize the sample
-        fn = normalize(f.reshape(1, -1))[0]
-        self.samples.append(fn)
+        fn = normalize(f.reshape(1, -1))
+        self.samples.append(fn[0])
         fn_idx = len(self.samples) - 1
 
         # If this is the first sample, create a new cluster and return
@@ -176,11 +176,14 @@ class OGMCGraph:
             return fn_idx
 
         # Compute distances between the new sample (fn) and existing cluster centroids
-        dists = {
-            i: euclidean(fn, c.centroid)
-            for i, c in self.clusters.items()
-            if c is not None
-        }
+        valid_keys, centroids = zip(
+            *[(k, c.centroid) for k, c in self.clusters.items() if c is not None]
+        )
+
+        centroids = np.array(centroids)
+
+        cdists = cdist(fn, centroids).flatten()
+        dists = {i: dist for i, dist in zip(valid_keys, cdists)}
 
         min_idx = min(dists, key=dists.get)  # index of closest cluster centroid
         min_dist = dists[min_idx]  # distance to closest cluster centroid
@@ -313,15 +316,21 @@ class OGMCGraph:
 
         u_clust = self.clusters[u_idx]
 
-        # Compute distances between u_clust and all the other clusters
-        dists = {
-            i: euclidean(c.centroid, u_clust.centroid)
-            for i, c in self.clusters.items()
-            if c is not None
-        }
+        # Compute distances between u_clust and existing cluster centroids
+
+        # First, get the keys that are valid, as some may be None
+        valid_keys, centroids = zip(
+            *[(k, c.centroid) for k, c in self.clusters.items() if c is not None]
+        )
+        centroids = np.array(centroids)
+
+        cdists = cdist(u_clust.centroid.reshape(1, -1), centroids).flatten()
+        dists = {i: dist for i, dist in zip(valid_keys, cdists)}
+
+        # Remove u_func's centroid from the dict
         dists.pop(u_idx)
 
-        if len(dists) == 0:
+        if not dists:
             return
 
         # Determine if the number of samples in the min_cluster is greater than the threshold

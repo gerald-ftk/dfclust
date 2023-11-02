@@ -38,6 +38,7 @@ if __name__ == "__main__":
 
     # Cluster using OGMCGraph
     graph = OGMCGraph()
+
     for sample in tqdm(samples, desc="Adding samples"):
         graph.add_sample(sample)
 
