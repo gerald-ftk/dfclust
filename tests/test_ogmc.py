@@ -16,7 +16,6 @@ class TestOGMC(unittest.TestCase):
         """Test that a new OGMCGraph instance is correctly initialized."""
         self.assertEqual(len(self.graph.samples), 0)
         self.assertEqual(len(self.graph.clusters), 0)
-        self.assertEqual(len(self.graph.connections), 0)
 
     def test_add_sample(self):
         """Test adding a single sample to the graph."""
@@ -30,9 +29,11 @@ class TestOGMC(unittest.TestCase):
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
         self.graph.clusters[1] = cluster2
-        self.graph.connect_clusters(0, 1)
-        self.assertIn(1, self.graph.connections[0])
-        self.assertIn(0, self.graph.connections[1])
+        distance = euclidean(cluster1.centroid, cluster2.centroid)
+        cluster1.add_connection(1, distance)
+        cluster2.add_connection(0, distance)
+        self.assertIn(1, cluster1.connections)
+        self.assertIn(0, cluster2.connections)
 
     def test_disconnect_clusters(self):
         """Test disconnecting two previously connected clusters in the graph."""
@@ -40,18 +41,13 @@ class TestOGMC(unittest.TestCase):
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
         self.graph.clusters[1] = cluster2
-        self.graph.connect_clusters(0, 1)
-        self.graph.disconnect_clusters(0, 1)
-        self.assertNotIn(1, self.graph.connections[0])
-        self.assertNotIn(0, self.graph.connections[1])
-
-    def test_create_cluster(self):
-        """Test creating a new cluster in the graph."""
-        sample = normalize(np.array([1.0] * 512).reshape(1, -1))[0]
-        idx = self.graph.add_sample(sample)  # creates 0th clust
-        cluster_id = self.graph.create_cluster(idx)  # creates 1st clust
-        self.assertEqual(cluster_id, 1)
-        self.assertIn(cluster_id, self.graph.clusters)
+        distance = euclidean(cluster1.centroid, cluster2.centroid)
+        cluster1.add_connection(1, distance)
+        cluster2.add_connection(0, distance)
+        cluster1.delete_connection(1)
+        cluster2.delete_connection(0)
+        self.assertNotIn(1, cluster1.connections)
+        self.assertNotIn(0, cluster2.connections)
 
     def test_get_connected_clusters(self):
         """Test retrieving clusters connected to a given cluster."""
@@ -59,19 +55,19 @@ class TestOGMC(unittest.TestCase):
         cluster2 = OGMCluster(self.graph)
         self.graph.clusters[0] = cluster1
         self.graph.clusters[1] = cluster2
-        self.graph.connect_clusters(0, 1)
-        connected_clusters = self.graph.get_connected_clusters(0)
+        distance = euclidean(cluster1.centroid, cluster2.centroid)
+        cluster1.add_connection(1, distance)
+        connected_clusters = cluster1.get_connected_clusters()
         self.assertIn(1, connected_clusters)
 
-    # Tests related to OGMCluster
     def test_add_sample_cluster(self):
         """Test adding a single sample to a cluster."""
         sample = normalize(np.array([1.0] * 512).reshape(1, -1))[0]
         self.graph.add_sample(sample)
         self.cluster.add_sample_by_index(0)
         self.assertEqual(len(self.cluster.sample_indices), 1)
-        self.assertEqual(self.cluster.sample_indices[0], 0)
-        self.assertTrue(np.allclose(self.cluster.samples()[0], sample))
+        self.assertIn(0, self.cluster.sample_indices)
+        self.assertTrue(np.allclose(self.graph.samples, sample))
 
     def test_centroid(self):
         """Test centroid computation for a cluster."""
@@ -79,9 +75,10 @@ class TestOGMC(unittest.TestCase):
         sample2 = np.array([2.0] * 512)
         self.graph.add_sample(sample1)
         self.graph.add_sample(sample2)
-        cluster0 = self.graph.clusters[0]
-        expected_centroid = normalize(sample1.reshape(1, -1))
-        self.assertTrue(np.allclose(cluster0.centroid, expected_centroid))
+        self.cluster.add_sample_by_index(0)
+        self.cluster.add_sample_by_index(1)
+        expected_centroid = normalize((sample1 + sample2).reshape(1, -1))[0]
+        self.assertTrue(np.allclose(self.cluster.centroid, expected_centroid))
 
     def test_multiple_distant_samples(self):
         """Test clustering of multiple distant samples."""

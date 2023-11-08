@@ -11,10 +11,11 @@ class OGMCluster:
         """
         Initialize the OGMCluster.
         """
-        self.sample_indices = []
+        self.sample_indices = set()
         self.sum: np.ndarray = np.zeros(512)  # Sum of samples in the cluster
         self.graph = graph
         self.centroid = self.sum
+        self.connections: Dict[int, float] = {}
 
     def add_sample_by_index(self, i: int) -> None:
         """
@@ -24,9 +25,43 @@ class OGMCluster:
         - i (int): Index of the sample in the parent graphs sample list.
         """
 
-        self.sample_indices.append(i)
+        self.sample_indices.add(i)
         self.sum += self.graph.samples[i]
         self.centroid = self.sum / len(self.sample_indices)
+
+    def merge_cluster(self, other_cluster: "OGMCluster") -> None:
+        """
+        Merge another cluster into this cluster.
+
+        Parameters:
+        - other_cluster (OGMCluster): The other cluster to merge into this one.
+
+        Returns:
+        - None
+        """
+        # Merge the sample indices from the other cluster into this one
+        # This assumes you have a structure to hold sample indices in your cluster
+        self.sample_indices.update(other_cluster.sample_indices)
+
+        # Merge connections from the other cluster into this one
+        for connected_label, distance in other_cluster.connections.items():
+            self.add_connection(connected_label, distance)
+
+    def add_connection(self, cluster: int, distance: float) -> None:
+        self.connections[cluster] = distance
+
+    def delete_connection(self, cluster: int) -> None:
+        if cluster in self.connections:
+            del self.connections[cluster]
+
+    def get_connected_clusters(self):
+        """Get a list of clusters that are connected to this cluster.
+
+        Returns:
+            A list of cluster indices that are connected to this cluster.
+        """
+        # Return the list of connected cluster indices
+        return list(self.connections.keys())
 
     def samples(self):
         return [self.graph.samples[i] for i in self.sample_indices]
@@ -45,6 +80,7 @@ class OGMCGraph:
         self,
         fusion: float = 0.7,
         nsr: int = 5,
+        ncr: int = 5,
         thr_sc: float = 0.99,
         thr_wc: float = 1.12,
     ) -> None:
@@ -62,14 +98,12 @@ class OGMCGraph:
         # Thresholds
         self.fusion = fusion
         self.nsr = nsr
+        self.ncr = ncr
         self.thr_sc = thr_sc
         self.thr_wc = thr_wc
 
         # Increment this counter as new clusters are added
         self.id_counter = 0
-
-        # Keep track of connections with a dict
-        self.connections: Dict[int, Set[int]] = {}
 
     @property
     def _labels(self) -> np.ndarray:
@@ -77,7 +111,7 @@ class OGMCGraph:
         Return the labels (i.e., cluster IDs) for each sample, taking connections into account.
 
         Returns:
-        - np.ndarray: An array where the value at index i represents the cluster ID of the i-th sample.
+            np.ndarray: An array where the value at index i represents the cluster ID of the i-th sample.
         """
         labels = np.empty(len(self.samples), dtype=int)
 
@@ -88,18 +122,17 @@ class OGMCGraph:
             if cluster_id in processed_clusters:
                 continue
 
-            # If cluster is not None and it's not been processed
             if cluster:
                 # Get the connected clusters for the current cluster
-                connected_clusters = self.get_connected_clusters(cluster_id)
-
-                # Add the current cluster to the list
-                connected_clusters.add(cluster_id)
+                connected_cluster_ids = [
+                    conn_id for conn_id, _ in cluster.connections.items()
+                ]
+                connected_cluster_ids.append(cluster_id)  # Include current cluster
 
                 # Find the cluster with the smallest ID among the connected clusters
-                representative_id = min(connected_clusters)
+                representative_id = min(connected_cluster_ids)
 
-                for conn_cluster_id in connected_clusters:
+                for conn_cluster_id in connected_cluster_ids:
                     # Mark the cluster as processed
                     processed_clusters.add(conn_cluster_id)
 
@@ -110,30 +143,28 @@ class OGMCGraph:
         return labels
 
     @property
-    def _labels_with_noise(self, min_cluster_size=10):
+    def _labels_with_noise(self, min_cluster_size=10) -> np.ndarray:
         """
-        Return labels for each sample, but if a label's count is less than X,
+        Return labels for each sample, but if a label's count is less than min_cluster_size,
         replace it with -1 indicating noise.
 
         Parameters:
-        - X: int, minimum count threshold below which labels are treated as noise.
+        - min_cluster_size: int, minimum count threshold below which labels are treated as noise.
 
         Returns:
         - np.ndarray: labels for each sample.
         """
-        labels = (
-            self._labels
-        )  # Assuming _labels is a property/method that returns the original labels
+        labels = self._labels  # Retrieve the original labels
 
         # Count occurrences of each label
         unique_labels, counts = np.unique(labels, return_counts=True)
 
-        # Find labels that occur less than X times
+        # Find labels that occur less than min_cluster_size times
         noise_labels = unique_labels[counts < min_cluster_size]
 
         # Replace infrequent labels with -1
-        for noise_label in noise_labels:
-            labels[labels == noise_label] = -1
+        is_noise = np.isin(labels, noise_labels)
+        labels[is_noise] = -1
 
         return labels
 
@@ -151,7 +182,6 @@ class OGMCGraph:
 
         cluster_id = self.id_counter
         self.clusters[cluster_id] = cluster
-        self.connections[cluster_id] = set()
         self.id_counter += 1
 
         return cluster_id
@@ -204,10 +234,10 @@ class OGMCGraph:
         return fn_idx
 
     def fuse_clusters(self, i1: int, i2: int) -> None:
-        """Fuse one cluster into another and set the fused cluster's entry to None.
+        """
+        Fuse one cluster into another and set the fused cluster's entry to None.
 
-        This method merges the samples of the second cluster into the first cluster,
-        updates the cumulative sum of the first cluster, manages the connections,
+        This method merges the samples and connections of the second cluster into the first cluster,
         and then sets the second cluster's entry in the clusters dictionary to None
         (instead of removing it) to ensure the indices of the remaining clusters
         are not affected.
@@ -222,90 +252,89 @@ class OGMCGraph:
         cluster1 = self.clusters[i1]
         cluster2 = self.clusters[i2]
 
-        # 1. Merge samples of cluster2 into cluster1
-        for sample_idx in cluster2.sample_indices:
-            cluster1.add_sample_by_index(sample_idx)
+        # Assuming cluster1 has a method merge_cluster that handles the merging of samples and connections.
+        cluster1.merge_cluster(cluster2)
 
-        # 2. Update cumulative sum of cluster1 (it's done automatically in add_sample)
+        # Now we need to update all connections in the graph that pointed to i2 to point to i1
+        for cluster in self.clusters.values():
+            if cluster and i2 in cluster.connections:
+                distance = cluster.connections.pop(i2)
+                cluster.add_connection(i1, distance)  # Update to the new connection
 
-        # 3. Update connections
-        for connected_cluster in set(self.connections[i2]):
-            # If the connected cluster is not cluster1, update its connections
-            if connected_cluster != i1:
-                self.connections[connected_cluster].remove(i2)
-                self.connections[connected_cluster].add(i1)
-                self.connections[i1].add(connected_cluster)
-
-        # Remove connections of cluster2
-        del self.connections[i2]
-
-        # 4. Set the cluster at this index to None to avoid changing indices of other clusters
+        # Finally, we mark the second cluster as None to indicate it's been fused
         self.clusters[i2] = None
 
     def _check_connections(self):
         """Check and ensure all connections are still valid."""
         invalid_connections = []
 
-        for cluster_idx, connected_clusters in self.connections.items():
-            # Check if the cluster exists
-            if cluster_idx >= len(self.clusters) or self.clusters[cluster_idx] is None:
-                invalid_connections.append(cluster_idx)
-                continue
+        for cluster_idx, cluster in self.clusters.items():
+            if cluster is None:
+                continue  # Skip deleted clusters
 
-            # Check connected clusters
-            for connected_cluster_idx in connected_clusters:
+            # Create a list of connections to remove to avoid modifying the dictionary during iteration
+            connections_to_remove = []
+
+            for conn_idx, distance in cluster.connections.items():
                 # Check if the connected cluster exists
-                if (
-                    connected_cluster_idx >= len(self.clusters)
-                    or self.clusters[connected_cluster_idx] is None
-                ):
-                    invalid_connections.append((cluster_idx, connected_cluster_idx))
+                if conn_idx >= len(self.clusters) or self.clusters[conn_idx] is None:
+                    connections_to_remove.append(conn_idx)
                     continue
 
                 # Check if the connected cluster acknowledges the connection back
-                if cluster_idx not in self.connections.get(
-                    connected_cluster_idx, set()
+                connected_cluster = self.clusters[conn_idx]
+                if cluster_idx not in connected_cluster.connections:
+                    connections_to_remove.append(conn_idx)
+
+            # Remove invalid connections for the current cluster
+            for conn_idx in connections_to_remove:
+                del cluster.connections[conn_idx]
+                invalid_connections.append((cluster_idx, conn_idx))
+
+            # Additionally, remove the invalid connections from the connected clusters
+            for conn_idx in connections_to_remove:
+                if (
+                    conn_idx < len(self.clusters)
+                    and self.clusters[conn_idx] is not None
                 ):
-                    invalid_connections.append((cluster_idx, connected_cluster_idx))
+                    self.clusters[conn_idx].connections.pop(cluster_idx, None)
 
-        # Removing invalid connections
-        for connection in invalid_connections:
-            if isinstance(connection, tuple):
-                # If connection is a tuple, it refers to a bidirectional connection
-                self.connections[connection[0]].discard(connection[1])
-            else:
-                # If connection is a single value, it means the cluster doesn't exist anymore
-                del self.connections[connection]
-
-        # if invalid_connections:
-        #     print(invalid_connections)
-        return invalid_connections  # Optionally return the list of invalid connections for debugging/info
+        return invalid_connections
 
     def connect_clusters(self, i1, i2):
         """Connect two clusters."""
 
+        dist = euclidean(self.clusters[i1].centroid, self.clusters[i2].centroid)
         # Ensure clusters are not the same
         if i1 == i2:
             raise ValueError("A cluster cannot be connected to itself.")
 
-        # Ensure both clusters have an entry in the connections dictionary
-        if i1 not in self.connections and (i1 in self.clusters):
-            self.connections[i1] = set()
-        if i2 not in self.connections and (i2 in self.clusters):
-            self.connections[i2] = set()
-
         # Establish the connection
-        self.connections[i1].add(i2)
-        self.connections[i2].add(i1)
+        self.clusters[i1].connections[i2] = dist
+        self.clusters[i2].connections[i1] = dist
 
     def disconnect_clusters(self, i1: int, i2: int):
         """Disconnect two clusters."""
-        self.connections[i1].remove(i2)
-        self.connections[i2].remove(i1)
+        del self.clusters[i1].connections[i2]
+        del self.clusters[i2].connections[i1]
 
-    def get_connected_clusters(self, cluster_idx):
-        """Return all clusters connected to the given cluster."""
-        return self.connections.get(cluster_idx, [])
+    def get_connected_clusters(self, cluster_idx: int):
+        """
+        Return all clusters connected to the given cluster.
+
+        Args:
+            cluster_idx (int): The index of the cluster.
+
+        Returns:
+            List[Tuple[int, float]]: A list of tuples where each tuple contains the index of a connected cluster
+                                     and the distance to that cluster.
+        """
+        cluster = self.clusters.get(cluster_idx)
+        if not cluster:
+            return []  # If the cluster doesn't exist, return an empty list
+
+        # The items of the connections dictionary are tuples of (cluster_label, distance)
+        return list(cluster.connections.items())
 
     def recluster(self, u_idx: int) -> None:
         """Trigger reclustering process
@@ -313,52 +342,56 @@ class OGMCGraph:
         Args:
             u_idx (int): The index of the cluster that was updated
         """
-
         u_clust = self.clusters[u_idx]
 
         # Compute distances between u_clust and existing cluster centroids
+        # First, get the valid clusters as some may be None
+        valid_clusters = {
+            k: c for k, c in self.clusters.items() if c is not None and k != u_idx
+        }
 
-        # First, get the keys that are valid, as some may be None
-        valid_keys, centroids = zip(
-            *[(k, c.centroid) for k, c in self.clusters.items() if c is not None]
-        )
-        centroids = np.array(centroids)
-
-        cdists = cdist(u_clust.centroid.reshape(1, -1), centroids).flatten()
-        dists = {i: dist for i, dist in zip(valid_keys, cdists)}
-
-        # Remove u_func's centroid from the dict
-        dists.pop(u_idx)
-
-        if not dists:
+        # If there are no other clusters to compare with, return
+        if not valid_clusters:
             return
 
-        # Determine if the number of samples in the min_cluster is greater than the threshold
-        min_idx = min(dists, key=dists.get)
-        min_clust = self.clusters[min_idx]
-        u_min_dist = dists[min_idx]
+        # Compute the distances from u_clust to all other clusters
+        dists = {
+            k: euclidean(u_clust.centroid, c.centroid)
+            for k, c in valid_clusters.items()
+        }
 
-        if len(u_clust) >= self.nsr:
-            if (u_min_dist <= self.fusion) and (len(min_clust) < self.nsr):
+        # Determine if the number of samples in the min_cluster is greater than the threshold
+        min_idx, u_min_dist = min(dists.items(), key=lambda item: item[1])
+        min_clust = self.clusters[min_idx]
+
+        if len(u_clust.sample_indices) >= self.nsr:
+            if (u_min_dist <= self.fusion) and (
+                len(min_clust.sample_indices) < self.nsr
+            ):
                 # Fuse u_clust and min_clust
                 self.fuse_clusters(u_idx, min_idx)
                 self.recluster(u_idx)
-
             elif u_min_dist <= self.thr_sc:
                 # Connect u_clust and min_clust
-                self.connect_clusters(u_idx, min_idx)
-
-            elif (u_min_dist <= self.thr_wc) and len(min_clust) < self.nsr:
-                # Connect uclust and min_clust
-                self.connect_clusters(u_idx, min_idx)
+                u_clust.add_connection(min_idx, u_min_dist)
+                min_clust.add_connection(u_idx, u_min_dist)
+            elif (u_min_dist <= self.thr_wc) and (
+                len(min_clust.sample_indices) < self.nsr
+            ):
+                # Connect u_clust and min_clust
+                u_clust.add_connection(min_idx, u_min_dist)
+                min_clust.add_connection(u_idx, u_min_dist)
 
         elif u_min_dist <= self.fusion:
             # Fuse u_clust and min_clust
             self.fuse_clusters(u_idx, min_idx)
 
-        elif (u_min_dist <= self.thr_wc) and len(min_clust) >= self.nsr:
+        elif (u_min_dist <= self.thr_wc) and (
+            len(min_clust.sample_indices) >= self.nsr
+        ):
             # Connect u_clust and min_clust
-            self.connect_clusters(u_idx, min_idx)
+            u_clust.add_connection(min_idx, u_min_dist)
+            min_clust.add_connection(u_idx, u_min_dist)
 
         self._check_connections()
 
