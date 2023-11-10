@@ -111,4 +111,5 @@ if __name__ == "__main__":
         hover = HoverTool(renderers=[renderer], tooltips=[("Label", "@label")])
     p.add_tools(hover)
 
+    print(f'labels found: {len(set(labels))}')
     show(p)

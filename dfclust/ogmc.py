@@ -420,14 +420,26 @@ class OGMCGraph:
 
             # dist[minIdx] <= thrwc and ns[minIdx] < nsr
             elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
-                # Connect u_clust and min_clust
-                u_clust.add_connection(min_idx, u_min_dist)
-                min_clust.add_connection(u_idx, u_min_dist)
 
-                # Remove the min_idx and its corresponding dist
-                key_to_remove = np.argmin(cdists)
-                del valid_keys[key_to_remove]
-                cdists = np.delete(cdists, key_to_remove)
+                while (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
+                    # Connect u_clust and min_clust
+                    u_clust.add_connection(min_idx, u_min_dist)
+                    min_clust.add_connection(u_idx, u_min_dist)
+
+                    # Remove the min_idx and its corresponding dist
+                    key_to_remove = np.argmin(cdists)
+                    del valid_keys[key_to_remove]
+                    cdists = np.delete(cdists, key_to_remove)
+
+                    # Recalculate distances to find the next closest cluster
+                    dists = dict(zip(valid_keys, cdists))
+                    if dists:  # Check if there are still clusters to connect
+                        min_idx = min(dists, key=dists.get)
+                        u_min_dist = dists[min_idx]
+                        min_clust = self.clusters[min_idx]
+                    else:
+                        break  # Exit loop if no more clusters to connect
+
                 self.recluster(u_idx, valid_keys, cdists)
 
         # dist[minIdx] <= thrf
@@ -463,8 +475,8 @@ if __name__ == "__main__":
         unique, counts = np.unique(graph._labels, return_counts=True)
         count = np.sum(counts > min_samples)
 
-        print(
-            f"samples: {i+1}/{features.shape[0]}, clusters: {len(graph.clusters)}, "
-            f"clusters above {min_samples} samples: {count}\t\r",
-            end="",
-        )
+        # print(
+        #     f"samples: {i+1}/{features.shape[0]}, clusters: {len(graph.clusters)}, "
+        #     f"clusters above {min_samples} samples: {count}\t\r",
+        #     end="",
+        # )
