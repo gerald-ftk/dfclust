@@ -52,11 +52,14 @@ class OGMCluster:
         """
         # Merge the sample indices from the other cluster into this one
         # This assumes you have a structure to hold sample indices in your cluster
-        self.sample_indices.update(other_cluster.sample_indices)
+
+        for i in other_cluster.sample_indices:
+            self.add_sample_by_index(i)
 
         # Merge connections from the other cluster into this one
         for connected_label, distance in other_cluster.connections.items():
-            self.add_connection(connected_label, distance)
+            if connected_label not in self.connections:
+                self.add_connection(connected_label, distance)
 
     def add_connection(self, cluster: int, distance: float) -> None:
         self.connections[cluster] = distance
@@ -412,6 +415,10 @@ class OGMCGraph:
                 u_clust.add_connection(min_idx, u_min_dist)
                 min_clust.add_connection(u_idx, u_min_dist)
 
+                self._check_connections()
+
+                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
+
                 # Remove the min_idx and its corresponding dist
                 key_to_remove = np.argmin(cdists)
                 del valid_keys[key_to_remove]
@@ -423,6 +430,10 @@ class OGMCGraph:
                 # Connect u_clust and min_clust
                 u_clust.add_connection(min_idx, u_min_dist)
                 min_clust.add_connection(u_idx, u_min_dist)
+
+                self._check_connections()
+
+                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
 
                 # Remove the min_idx and its corresponding dist
                 key_to_remove = np.argmin(cdists)
@@ -441,6 +452,10 @@ class OGMCGraph:
             # Connect u_clust and min_clust
             u_clust.add_connection(min_idx, u_min_dist)
             min_clust.add_connection(u_idx, u_min_dist)
+
+            self._check_connections()
+
+            # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
 
             # Remove the min_idx and its corresponding dist
             key_to_remove = np.argmin(cdists)
@@ -463,8 +478,8 @@ if __name__ == "__main__":
         unique, counts = np.unique(graph._labels, return_counts=True)
         count = np.sum(counts > min_samples)
 
-        print(
-            f"samples: {i+1}/{features.shape[0]}, clusters: {len(graph.clusters)}, "
-            f"clusters above {min_samples} samples: {count}\t\r",
-            end="",
-        )
+        # print(
+        #     f"samples: {i+1}/{features.shape[0]}, clusters: {len(graph.clusters)}, "
+        #     f"clusters above {min_samples} samples: {count}\t\r",
+        #     end="",
+        # )
