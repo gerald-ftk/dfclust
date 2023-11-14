@@ -308,7 +308,7 @@ class OGMCGraph:
 
     def _check_connections(self):
         """Remove the weakest connections from each cluster if it exceeds the maximum allowed number of connections."""
-        for cluster_idx, cluster in self.clusters.items():
+        for _, cluster in self.clusters.items():
             if cluster is None:
                 continue  # Skip deleted clusters
 
@@ -415,8 +415,6 @@ class OGMCGraph:
                 u_clust.add_connection(min_idx, u_min_dist)
                 min_clust.add_connection(u_idx, u_min_dist)
 
-                self._check_connections()
-
                 # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
 
                 # Remove the min_idx and its corresponding dist
@@ -430,8 +428,6 @@ class OGMCGraph:
                 # Connect u_clust and min_clust
                 u_clust.add_connection(min_idx, u_min_dist)
                 min_clust.add_connection(u_idx, u_min_dist)
-
-                self._check_connections()
 
                 # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
 
@@ -452,8 +448,6 @@ class OGMCGraph:
             # Connect u_clust and min_clust
             u_clust.add_connection(min_idx, u_min_dist)
             min_clust.add_connection(u_idx, u_min_dist)
-
-            self._check_connections()
 
             # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
 

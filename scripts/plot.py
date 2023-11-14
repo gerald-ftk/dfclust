@@ -18,9 +18,7 @@ from bokeh.palettes import Turbo256
 from dfclust.ogmc import OGMCGraph
 from umap import UMAP
 from tqdm import tqdm
-import sys
 
-sys.setrecursionlimit(2000)
 
 if __name__ == "__main__":
     import argparse
