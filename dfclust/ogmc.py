@@ -1,27 +1,54 @@
 import numpy as np
 from scipy.spatial.distance import euclidean, cdist
 from sklearn.preprocessing import normalize
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Tuple
 import heapq
 
 
-class MaxHeap:
+class OGConnections:
     def __init__(self, max_length: int) -> None:
+        """
+        Initialize the OGConnections object with a specified maximum length.
+
+        :param max_length: The maximum number of connections (distance-label pairs) to store.
+        """
         self.max_length = max_length
-        self.data = []
+        self.data: List[Tuple[float, int]] = []
 
-    def add(self, label: int, distance: float):
+    def add(self, distance: float, label: int) -> None:
+        """
+        Add a new label-distance pair to the heap. If the heap is full, the pair with the 
+        smallest distance is replaced if the new distance is larger.
+
+        :param label: The label of the new connection.
+        :param distance: The distance associated with the label.
+        """
+
+        if not isinstance(distance, float):
+            raise ValueError(f'distance should be a float, not {type(distance)}')
+        elif not isinstance(label, int):
+            raise ValueError(f'label should be an int, not {type(label)}')
+
         if len(self.data) < self.max_length:
-            heapq.heappush(self.data, (label, distance))  # Heap based on distance
-        elif distance > self.data[0][1]:  # Compare distances
-            heapq.heapreplace(self.data, (label, distance))
+            heapq.heappush(self.data, (distance, label))
+        elif distance > self.data[0][0]:
+            heapq.heapreplace(self.data, (distance, label))
 
-    def get_sorted_data(self):
+    def get_sorted_data(self) -> List[Tuple[float, int]]:
+        """
+        Retrieve a sorted list of all label-distance pairs in the heap.
+
+        :return: A list of tuples, each containing a distance and its associated label, sorted by distance.
+        """
         return sorted(self.data)
-    
-    def get_all_labels(self):
-        return [label for label, _ in self.data]
 
+    def get_all_labels(self) -> List[int]:
+        """
+        Retrieve all labels currently in the heap.
+
+        :return: A list of labels.
+        """
+        return [label for _, label in self.data]
 
 class OGMCluster:
     """A class to represent a single cluster within OGMC."""
@@ -34,7 +61,7 @@ class OGMCluster:
         self.sum: np.ndarray = np.zeros(512)  # Sum of samples in the cluster
         self.graph = graph
         self.centroid = self.sum
-        self.connections = MaxHeap(nsr)
+        self.connections = OGConnections(nsr)
         self._is_robust = False
 
     @property
@@ -76,12 +103,12 @@ class OGMCluster:
             self.add_sample_by_index(i)
 
         # Merge connections from the other cluster into this one
-        for connected_label, distance in other_cluster.connections.get_sorted_data():
+        for distance, connected_label in other_cluster.connections.get_sorted_data():
             if connected_label not in self.connections.get_all_labels():
-                self.add_connection(connected_label, distance)
+                self.add_connection(distance, connected_label)
 
-    def add_connection(self, cluster: int, distance: float) -> None:
-        self.connections.add(cluster, distance)
+    def add_connection(self, distance: float, cluster: int) -> None:
+        self.connections.add(distance, cluster)
 
     def get_connected_clusters(self):
         """Get a list of clusters that are connected to this cluster.
@@ -328,26 +355,26 @@ class OGMCGraph:
             raise ValueError("A cluster cannot be connected to itself.")
 
         # Establish the connection
-        self.clusters[i1].connections.add(i2, dist)
-        self.clusters[i2].connections.add(i1, dist)
+        self.clusters[i1].connections.add(dist, i2)
+        self.clusters[i2].connections.add(dist, i1)
 
-    def get_connected_clusters(self, cluster_idx: int):
-        """
-        Return all clusters connected to the given cluster.
+    # def get_connected_clusters(self, cluster_idx: int):
+    #     """
+    #     Return all clusters connected to the given cluster.
 
-        Args:
-            cluster_idx (int): The index of the cluster.
+    #     Args:
+    #         cluster_idx (int): The index of the cluster.
 
-        Returns:
-            List[Tuple[int, float]]: A list of tuples where each tuple contains the index of a connected cluster
-                                     and the distance to that cluster.
-        """
-        cluster = self.clusters.get(cluster_idx)
-        if not cluster:
-            return []  # If the cluster doesn't exist, return an empty list
+    #     Returns:
+    #         List[Tuple[int, float]]: A list of tuples where each tuple contains the index of a connected cluster
+    #                                  and the distance to that cluster.
+    #     """
+    #     cluster = self.clusters.get(cluster_idx)
+    #     if not cluster:
+    #         return []  # If the cluster doesn't exist, return an empty list
 
-        # The items of the connections dictionary are tuples of (cluster_label, distance)
-        return list(cluster.connections.get_sorted_data())
+    #     # The items of the connections dictionary are tuples of (cluster_label, distance)
+    #     return list(cluster.connections.get_sorted_data())
 
     def compute_distances(self, u_idx: int) -> None:
         """Trigger reclustering process
@@ -400,8 +427,8 @@ class OGMCGraph:
             # dist[minIdx] <= thrsc
             elif u_min_dist <= self.thr_sc:
                 # Connect u_clust and min_clust
-                u_clust.add_connection(min_idx, u_min_dist)
-                min_clust.add_connection(u_idx, u_min_dist)
+                u_clust.add_connection(u_min_dist, min_idx)
+                min_clust.add_connection(u_min_dist, u_idx)
 
                 # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
 
@@ -414,8 +441,8 @@ class OGMCGraph:
             # dist[minIdx] <= thrwc and ns[minIdx] < nsr
             elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
                 # Connect u_clust and min_clust
-                u_clust.add_connection(min_idx, u_min_dist)
-                min_clust.add_connection(u_idx, u_min_dist)
+                u_clust.add_connection(u_min_dist, min_idx)
+                min_clust.add_connection(u_min_dist, u_idx)
 
                 # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
 
@@ -434,8 +461,8 @@ class OGMCGraph:
         # dist[minidx] <= thrwc and ns[minidx] >= nsr
         elif (u_min_dist <= self.thr_wc) and min_clust.is_robust:
             # Connect u_clust and min_clust
-            u_clust.add_connection(min_idx, u_min_dist)
-            min_clust.add_connection(u_idx, u_min_dist)
+            u_clust.add_connection(u_min_dist, min_idx)
+            min_clust.add_connection(u_min_dist, u_idx)
 
             # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
 
