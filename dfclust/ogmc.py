@@ -2,12 +2,31 @@ import numpy as np
 from scipy.spatial.distance import euclidean, cdist
 from sklearn.preprocessing import normalize
 from typing import List, Dict, Set
+import heapq
+
+
+class MaxHeap:
+    def __init__(self, max_length: int) -> None:
+        self.max_length = max_length
+        self.data = []
+
+    def add(self, label: int, distance: float):
+        if len(self.data) < self.max_length:
+            heapq.heappush(self.data, (label, distance))  # Heap based on distance
+        elif distance > self.data[0][1]:  # Compare distances
+            heapq.heapreplace(self.data, (label, distance))
+
+    def get_sorted_data(self):
+        return sorted(self.data)
+    
+    def get_all_labels(self):
+        return [label for label, _ in self.data]
 
 
 class OGMCluster:
     """A class to represent a single cluster within OGMC."""
 
-    def __init__(self, graph: "OGMCGraph") -> None:
+    def __init__(self, graph: "OGMCGraph", nsr: int) -> None:
         """
         Initialize the OGMCluster.
         """
@@ -15,7 +34,7 @@ class OGMCluster:
         self.sum: np.ndarray = np.zeros(512)  # Sum of samples in the cluster
         self.graph = graph
         self.centroid = self.sum
-        self.connections: Dict[int, float] = {}
+        self.connections = MaxHeap(nsr)
         self._is_robust = False
 
     @property
@@ -57,16 +76,12 @@ class OGMCluster:
             self.add_sample_by_index(i)
 
         # Merge connections from the other cluster into this one
-        for connected_label, distance in other_cluster.connections.items():
-            if connected_label not in self.connections:
+        for connected_label, distance in other_cluster.connections.get_sorted_data():
+            if connected_label not in self.connections.get_all_labels():
                 self.add_connection(connected_label, distance)
 
     def add_connection(self, cluster: int, distance: float) -> None:
-        self.connections[cluster] = distance
-
-    def delete_connection(self, cluster: int) -> None:
-        if cluster in self.connections:
-            del self.connections[cluster]
+        self.connections.add(cluster, distance)
 
     def get_connected_clusters(self):
         """Get a list of clusters that are connected to this cluster.
@@ -75,7 +90,7 @@ class OGMCluster:
             A list of cluster indices that are connected to this cluster.
         """
         # Return the list of connected cluster indices
-        return list(self.connections.keys())
+        return list(self.connections.get_all_labels())
 
     def samples(self):
         return [self.graph.samples[i] for i in self.sample_indices]
@@ -165,7 +180,7 @@ class OGMCGraph:
                 labels[sample_indices_list] = current_label
 
                 # Add connected clusters to the queue if they haven't been processed yet
-                for connected_cluster_id in current_cluster.connections:
+                for connected_cluster_id in current_cluster.connections.get_all_labels():
                     cc = self.clusters[connected_cluster_id]
                     if cc is not None:
                         if np.any(
@@ -213,7 +228,7 @@ class OGMCGraph:
         Returns:
         - int: The ID of the newly created cluster.
         """
-        cluster = OGMCluster(graph=self)
+        cluster = OGMCluster(graph=self, nsr=self.nsr)
         cluster.add_sample_by_index(idx)
 
         cluster_id = self.id_counter
@@ -268,7 +283,6 @@ class OGMCGraph:
             new_cluster_idx = self.create_cluster(fn_idx)
             if (min_dist <= self.thr_wc) and (len(min_cluster) >= self.nsr):
                 self.connect_clusters(new_cluster_idx, min_idx)
-                self._check_connections()
 
         return fn_idx
 
@@ -291,40 +305,19 @@ class OGMCGraph:
         cluster1 = self.clusters[i1]
         cluster2 = self.clusters[i2]
 
-        # Assuming cluster1 has a method merge_cluster that handles the merging of samples and connections.
         cluster1.merge_cluster(cluster2)
 
-        # Now we need to update all connections in the graph that pointed to i2 to point to i1
-        for cluster in self.clusters.values():
-            if cluster and i2 in cluster.connections:
-                distance = cluster.connections.pop(i2)
-                cluster.add_connection(i1, distance)  # Update to the new connection
+        # Update all connections in the graph that pointed to i2 to point to i1
+        # for cluster in self.clusters.values():
+        #     if cluster and i2 in cluster.connections:
+        #         distance = cluster.connections.pop(i2)
+        #         cluster.add_connection(i1, distance)  # Update to the new connection
 
         # Finally, we mark the second cluster as None to indicate it's been fused
         self.clusters[i2] = None
 
         if len(cluster1) > self.nsr:
             cluster1.is_robust = True
-
-    def _check_connections(self):
-        """Remove the weakest connections from each cluster if it exceeds the maximum allowed number of connections."""
-        for _, cluster in self.clusters.items():
-            if cluster is None:
-                continue  # Skip deleted clusters
-
-            # If the cluster has more connections than allowed, remove the weakest ones
-            if len(cluster.connections) > self.ncr:
-                # Sort connections by distance (from smallest to largest, strongest to weakest)
-                sorted_connections = sorted(
-                    cluster.connections.items(), key=lambda item: item[1], reverse=True
-                )
-
-                # Determine the connections to remove
-                connections_to_remove = sorted_connections[self.ncr :]
-
-                # Remove the weakest connections
-                for conn_idx, _ in connections_to_remove:
-                    del cluster.connections[conn_idx]
 
     def connect_clusters(self, i1, i2):
         """Connect two clusters."""
@@ -335,13 +328,8 @@ class OGMCGraph:
             raise ValueError("A cluster cannot be connected to itself.")
 
         # Establish the connection
-        self.clusters[i1].connections[i2] = dist
-        self.clusters[i2].connections[i1] = dist
-
-    def disconnect_clusters(self, i1: int, i2: int):
-        """Disconnect two clusters."""
-        del self.clusters[i1].connections[i2]
-        del self.clusters[i2].connections[i1]
+        self.clusters[i1].connections.add(i2, dist)
+        self.clusters[i2].connections.add(i1, dist)
 
     def get_connected_clusters(self, cluster_idx: int):
         """
@@ -359,7 +347,7 @@ class OGMCGraph:
             return []  # If the cluster doesn't exist, return an empty list
 
         # The items of the connections dictionary are tuples of (cluster_label, distance)
-        return list(cluster.connections.items())
+        return list(cluster.connections.get_sorted_data())
 
     def compute_distances(self, u_idx: int) -> None:
         """Trigger reclustering process
@@ -456,8 +444,6 @@ class OGMCGraph:
             del valid_keys[key_to_remove]
             cdists = np.delete(cdists, key_to_remove)
             self.recluster(u_idx, valid_keys, cdists)
-
-        self._check_connections()
 
 
 if __name__ == "__main__":
