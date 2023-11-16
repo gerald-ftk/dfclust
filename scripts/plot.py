@@ -31,7 +31,6 @@ if __name__ == "__main__":
     print(f"loading npz from disk...")
     with np.load(f"{args.data}") as f:
         samples = f["features"]
-        np.random.shuffle(samples)
         samples = samples[: args.cutoff]
         image_urls = f["urls"][: args.cutoff] if "urls" in f else None
 

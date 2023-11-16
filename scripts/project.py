@@ -32,17 +32,22 @@ def umap_projection(features):
     return embedding
 
 
+def filter_small_clusters(labels, min_cluster_size):
+    unique, counts = np.unique(labels, return_counts=True)
+    label_count = dict(zip(unique, counts))
+    filtered_labels = np.array(
+        [label if label_count[label] >= min_cluster_size else -1 for label in labels]
+    )
+    return filtered_labels
+
+
 def color_map(labels):
     unique_labels = np.unique(labels)
     n_labels = len(unique_labels)
 
-    # Using Turbo256 color map
-    turbo_colors = Turbo256
-    step = max(1, int(len(turbo_colors) / n_labels))
-    color_dict = {
-        label: turbo_colors[i * step % len(turbo_colors)]
-        for i, label in enumerate(unique_labels)
-    }
+    # Evenly spacing colors across the Turbo256 palette
+    color_indices = np.linspace(0, 255, n_labels, dtype=int)
+    color_dict = {label: Turbo256[i] for label, i in zip(unique_labels, color_indices)}
     color_dict[-1] = "#000000"  # Color for noise
     colors = [color_dict[label] for label in labels]
     return colors
@@ -82,7 +87,7 @@ def plot_with_bokeh(embedding, labels, colors, urls=None):
         hover = HoverTool(renderers=[renderer], tooltips=[("Label", "@label")])
         plot.add_tools(hover)
 
-    output_file("scripts/umap_projection.html")
+    output_file("scripts/projection.html")
     show(plot)
 
 
@@ -91,10 +96,13 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser()
     ap.add_argument("file_path")
+    ap.add_argument("-m", "--min_cluster_size", default=50, type=int)
     args = ap.parse_args()
 
     print("loading data...")
     labels, features, urls = load_data(args.file_path)
+
+    labels = filter_small_clusters(labels, args.min_cluster_size)
 
     # Perform UMAP Projection
     print(f"creating projection...")
