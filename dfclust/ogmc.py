@@ -17,7 +17,7 @@ class OGConnections:
 
     def add(self, distance: float, label: int) -> None:
         """
-        Add a new label-distance pair to the heap. If the heap is full, the pair with the 
+        Add a new label-distance pair to the heap. If the heap is full, the pair with the
         smallest distance is replaced if the new distance is larger.
 
         :param label: The label of the new connection.
@@ -25,9 +25,9 @@ class OGConnections:
         """
 
         if not isinstance(distance, float):
-            raise ValueError(f'distance should be a float, not {type(distance)}')
+            raise ValueError(f"distance should be a float, not {type(distance)}")
         elif not isinstance(label, int):
-            raise ValueError(f'label should be an int, not {type(label)}')
+            raise ValueError(f"label should be an int, not {type(label)}")
 
         if len(self.data) < self.max_length:
             heapq.heappush(self.data, (distance, label))
@@ -49,6 +49,7 @@ class OGConnections:
         :return: A list of labels.
         """
         return [label for _, label in self.data]
+
 
 class OGMCluster:
     """A class to represent a single cluster within OGMC."""
@@ -207,7 +208,9 @@ class OGMCGraph:
                 labels[sample_indices_list] = current_label
 
                 # Add connected clusters to the queue if they haven't been processed yet
-                for connected_cluster_id in current_cluster.connections.get_all_labels():
+                for (
+                    connected_cluster_id
+                ) in current_cluster.connections.get_all_labels():
                     cc = self.clusters[connected_cluster_id]
                     if cc is not None:
                         if np.any(
@@ -405,72 +408,49 @@ class OGMCGraph:
         return u_idx, list(valid_keys), cdists
 
     def recluster(self, u_idx: int, valid_keys: list, cdists: np.ndarray):
-        if not valid_keys:
-            return
+        task_stack = [(u_idx, valid_keys, cdists)]
 
-        u_clust = self.clusters[u_idx]
-        dists = dict(zip(valid_keys, cdists))
+        while task_stack:
+            u_idx, valid_keys, cdists = task_stack.pop()
 
-        # Determine if the number of samples in the min_cluster is greater than the threshold
-        min_idx = min(dists, key=dists.get)
-        u_min_dist = dists[min_idx]
-        min_clust = self.clusters[min_idx]
+            if not valid_keys:
+                continue
 
-        # ns[uIdx] >= nsr
-        if u_clust.is_robust:
-            # dist[min_idx] <= thrf and ns[minIdx] < nsr
-            if (u_min_dist <= self.thr_f) and not min_clust.is_robust:
-                # Fuse u_clust and min_clust
+            u_clust = self.clusters[u_idx]
+            dists = dict(zip(valid_keys, cdists))
+
+            min_idx = min(dists, key=dists.get)
+            u_min_dist = dists[min_idx]
+            min_clust = self.clusters[min_idx]
+
+            key_to_remove = np.argmin(cdists)  # Precompute this
+
+            def connect_clusters():
+                u_clust.add_connection(u_min_dist, min_idx)
+                min_clust.add_connection(u_min_dist, u_idx)
+                del valid_keys[key_to_remove]
+                return np.delete(cdists, key_to_remove)
+
+            if u_clust.is_robust:
+                if (u_min_dist <= self.thr_f) and not min_clust.is_robust:
+                    self.fuse_clusters(u_idx, min_idx)
+                    new_u_idx, new_valid_keys, new_cdists = self.compute_distances(
+                        u_idx
+                    )
+                    task_stack.append((new_u_idx, new_valid_keys, new_cdists))
+                elif u_min_dist <= self.thr_sc:
+                    cdists = connect_clusters()
+                    task_stack.append((u_idx, valid_keys, cdists))
+                elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
+                    cdists = connect_clusters()
+                    task_stack.append((u_idx, valid_keys, cdists))
+            elif u_min_dist <= self.thr_f:
                 self.fuse_clusters(u_idx, min_idx)
-                self.recluster(*self.compute_distances(u_idx))
-
-            # dist[minIdx] <= thrsc
-            elif u_min_dist <= self.thr_sc:
-                # Connect u_clust and min_clust
-                u_clust.add_connection(u_min_dist, min_idx)
-                min_clust.add_connection(u_min_dist, u_idx)
-
-                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
-
-                # Remove the min_idx and its corresponding dist
-                key_to_remove = np.argmin(cdists)
-                del valid_keys[key_to_remove]
-                cdists = np.delete(cdists, key_to_remove)
-                self.recluster(u_idx, valid_keys, cdists)
-
-            # dist[minIdx] <= thrwc and ns[minIdx] < nsr
-            elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
-                # Connect u_clust and min_clust
-                u_clust.add_connection(u_min_dist, min_idx)
-                min_clust.add_connection(u_min_dist, u_idx)
-
-                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
-
-                # Remove the min_idx and its corresponding dist
-                key_to_remove = np.argmin(cdists)
-                del valid_keys[key_to_remove]
-                cdists = np.delete(cdists, key_to_remove)
-                self.recluster(u_idx, valid_keys, cdists)
-
-        # dist[minIdx] <= thrf
-        elif u_min_dist <= self.thr_f:
-            # Fuse u_clust and min_clust
-            self.fuse_clusters(u_idx, min_idx)
-            self.recluster(*self.compute_distances(u_idx))
-
-        # dist[minidx] <= thrwc and ns[minidx] >= nsr
-        elif (u_min_dist <= self.thr_wc) and min_clust.is_robust:
-            # Connect u_clust and min_clust
-            u_clust.add_connection(u_min_dist, min_idx)
-            min_clust.add_connection(u_min_dist, u_idx)
-
-            # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
-
-            # Remove the min_idx and its corresponding dist
-            key_to_remove = np.argmin(cdists)
-            del valid_keys[key_to_remove]
-            cdists = np.delete(cdists, key_to_remove)
-            self.recluster(u_idx, valid_keys, cdists)
+                new_u_idx, new_valid_keys, new_cdists = self.compute_distances(u_idx)
+                task_stack.append((new_u_idx, new_valid_keys, new_cdists))
+            elif (u_min_dist <= self.thr_wc) and min_clust.is_robust:
+                cdists = connect_clusters()
+                task_stack.append((u_idx, valid_keys, cdists))
 
 
 if __name__ == "__main__":
