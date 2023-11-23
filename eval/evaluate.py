@@ -46,6 +46,28 @@ def generate_test_labels(features):
 
     return ogmc._labels_with_noise
 
+def b_cubed_precision_recall(y_true, y_pred):
+    # Create a dictionary to hold counts
+    true_cluster_counts = {}
+    pred_cluster_counts = {}
+    for t, p in zip(y_true, y_pred):
+        true_cluster_counts[t] = true_cluster_counts.get(t, 0) + 1
+        pred_cluster_counts[p] = pred_cluster_counts.get(p, 0) + 1
+
+    # Calculate precision and recall per element
+    precision_sum = 0
+    recall_sum = 0
+    for t, p in zip(y_true, y_pred):
+        tp = len([1 for yt, yp in zip(y_true, y_pred) if yt == t and yp == p])
+        precision_sum += tp / pred_cluster_counts[p]
+        recall_sum += tp / true_cluster_counts[t]
+
+    # Average over all elements
+    precision = precision_sum / len(y_true)
+    recall = recall_sum / len(y_true)
+
+    return precision, recall
+
 
 if __name__ == "__main__":
     import argparse
