@@ -17,17 +17,12 @@ class OGConnections:
 
     def add(self, distance: float, label: int) -> None:
         """
-        Add a new label-distance pair to the heap. If the heap is full, the pair with the 
+        Add a new label-distance pair to the heap. If the heap is full, the pair with the
         smallest distance is replaced if the new distance is larger.
 
         :param label: The label of the new connection.
         :param distance: The distance associated with the label.
         """
-
-        if not isinstance(distance, float):
-            raise ValueError(f'distance should be a float, not {type(distance)}')
-        elif not isinstance(label, int):
-            raise ValueError(f'label should be an int, not {type(label)}')
 
         if len(self.data) < self.max_length:
             heapq.heappush(self.data, (distance, label))
@@ -49,6 +44,7 @@ class OGConnections:
         :return: A list of labels.
         """
         return [label for _, label in self.data]
+
 
 class OGMCluster:
     """A class to represent a single cluster within OGMC."""
@@ -207,7 +203,9 @@ class OGMCGraph:
                 labels[sample_indices_list] = current_label
 
                 # Add connected clusters to the queue if they haven't been processed yet
-                for connected_cluster_id in current_cluster.connections.get_all_labels():
+                for (
+                    connected_cluster_id
+                ) in current_cluster.connections.get_all_labels():
                     cc = self.clusters[connected_cluster_id]
                     if cc is not None:
                         if np.any(
@@ -393,27 +391,27 @@ class OGMCGraph:
 
         # If there are no valid clusters after filtering, return
         if not valid_clusters:
-            return u_idx, [], []
+            return u_idx, np.array([]), np.array([])
 
         # Unpack the keys and centroids into separate lists
         valid_keys, valid_centroids = zip(*valid_clusters)
+        valid_keys = np.array(valid_keys)
+        valid_centroids = np.array(valid_centroids)
 
         # Compute the distances from u_clust to all other clusters
-        valid_centroids = np.array(valid_centroids)
         cdists = cdist(np.array([u_clust.centroid]), valid_centroids).flatten()
 
-        return u_idx, list(valid_keys), cdists
+        return u_idx, valid_keys, cdists
 
-    def recluster(self, u_idx: int, valid_keys: list, cdists: np.ndarray):
-        if not valid_keys:
+    def recluster(self, u_idx: int, valid_keys: np.ndarray, cdists: np.ndarray):
+        if valid_keys.size == 0:
             return
 
         u_clust = self.clusters[u_idx]
-        dists = dict(zip(valid_keys, cdists))
 
         # Determine if the number of samples in the min_cluster is greater than the threshold
-        min_idx = min(dists, key=dists.get)
-        u_min_dist = dists[min_idx]
+        min_idx = valid_keys[np.argmin(cdists)]
+        u_min_dist = cdists.min()
         min_clust = self.clusters[min_idx]
 
         # ns[uIdx] >= nsr
@@ -434,7 +432,7 @@ class OGMCGraph:
 
                 # Remove the min_idx and its corresponding dist
                 key_to_remove = np.argmin(cdists)
-                del valid_keys[key_to_remove]
+                valid_keys = np.delete(valid_keys, key_to_remove)
                 cdists = np.delete(cdists, key_to_remove)
                 self.recluster(u_idx, valid_keys, cdists)
 
@@ -448,7 +446,7 @@ class OGMCGraph:
 
                 # Remove the min_idx and its corresponding dist
                 key_to_remove = np.argmin(cdists)
-                del valid_keys[key_to_remove]
+                valid_keys = np.delete(valid_keys, key_to_remove)
                 cdists = np.delete(cdists, key_to_remove)
                 self.recluster(u_idx, valid_keys, cdists)
 
@@ -468,7 +466,7 @@ class OGMCGraph:
 
             # Remove the min_idx and its corresponding dist
             key_to_remove = np.argmin(cdists)
-            del valid_keys[key_to_remove]
+            valid_keys = np.delete(valid_keys, key_to_remove)
             cdists = np.delete(cdists, key_to_remove)
             self.recluster(u_idx, valid_keys, cdists)
 

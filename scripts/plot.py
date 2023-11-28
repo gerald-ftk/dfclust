@@ -18,6 +18,7 @@ from bokeh.palettes import Turbo256
 from dfclust.ogmc import OGMCGraph
 from umap import UMAP
 from tqdm import tqdm
+import time
 
 
 if __name__ == "__main__":
@@ -39,8 +40,20 @@ if __name__ == "__main__":
     # Cluster using OGMCGraph
     graph = OGMCGraph()
 
-    for sample in tqdm(samples, desc="Adding samples"):
+    # Initialize tqdm progress bar
+    pbar = tqdm(total=len(samples), desc="Adding samples")
+
+    # Loop through samples
+    for sample in samples:
+        start_time = time.time()  # Start time measurement
         graph.add_sample(sample)
+        elapsed_time = (time.time() - start_time) * 1000  # Time in milliseconds
+
+        # Update progress bar with custom description showing time in milliseconds
+        pbar.set_description(f"Adding samples (avg {elapsed_time:.2f} ms/it)")
+        pbar.update(1)
+
+    pbar.close()
 
     # Get labels
     labels = graph._labels_with_noise
