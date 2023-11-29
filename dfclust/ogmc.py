@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial.distance import euclidean, cdist
 from sklearn.preprocessing import normalize
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Tuple
 import heapq
 
 
@@ -404,71 +404,66 @@ class OGMCGraph:
         return u_idx, valid_keys, cdists
 
     def recluster(self, u_idx: int, valid_keys: np.ndarray, cdists: np.ndarray):
-        if valid_keys.size == 0:
-            return
+        while valid_keys.size > 0:
+            u_clust = self.clusters[u_idx]
 
-        u_clust = self.clusters[u_idx]
+            c_min = np.argmin(cdists)
+            # Determine if the number of samples in the min_cluster is greater than the threshold
+            min_idx = valid_keys[c_min]
+            u_min_dist = cdists[c_min]
+            min_clust = self.clusters[min_idx]
 
-        # Determine if the number of samples in the min_cluster is greater than the threshold
-        min_idx = valid_keys[np.argmin(cdists)]
-        u_min_dist = cdists.min()
-        min_clust = self.clusters[min_idx]
+            # ns[uIdx] >= nsr
+            if u_clust.is_robust:
+                # dist[min_idx] <= thrf and ns[minIdx] < nsr
+                if (u_min_dist <= self.thr_f) and not min_clust.is_robust:
+                    # Fuse u_clust and min_clust
+                    self.fuse_clusters(u_idx, min_idx)
+                    u_idx, valid_keys, cdists = self.compute_distances(u_idx)
 
-        # ns[uIdx] >= nsr
-        if u_clust.is_robust:
-            # dist[min_idx] <= thrf and ns[minIdx] < nsr
-            if (u_min_dist <= self.thr_f) and not min_clust.is_robust:
+                # dist[minIdx] <= thrsc
+                elif u_min_dist <= self.thr_sc:
+                    # Connect u_clust and min_clust
+                    u_clust.add_connection(u_min_dist, min_idx)
+                    min_clust.add_connection(u_min_dist, u_idx)
+
+                    # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
+
+                    # Remove the min_idx and its corresponding dist
+                    valid_keys = np.delete(valid_keys, c_min)
+                    cdists = np.delete(cdists, c_min)
+
+                # dist[minIdx] <= thrwc and ns[minIdx] < nsr
+                elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
+                    # Connect u_clust and min_clust
+                    u_clust.add_connection(u_min_dist, min_idx)
+                    min_clust.add_connection(u_min_dist, u_idx)
+
+                    # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
+
+                    # Remove the min_idx and its corresponding dist
+                    valid_keys = np.delete(valid_keys, c_min)
+                    cdists = np.delete(cdists, c_min)
+
+            # dist[minIdx] <= thrf
+            elif u_min_dist <= self.thr_f:
                 # Fuse u_clust and min_clust
                 self.fuse_clusters(u_idx, min_idx)
-                self.recluster(*self.compute_distances(u_idx))
+                u_idx, valid_keys, cdists = self.compute_distances(u_idx)
 
-            # dist[minIdx] <= thrsc
-            elif u_min_dist <= self.thr_sc:
+            # dist[minidx] <= thrwc and ns[minidx] >= nsr
+            elif (u_min_dist <= self.thr_wc) and min_clust.is_robust:
                 # Connect u_clust and min_clust
                 u_clust.add_connection(u_min_dist, min_idx)
                 min_clust.add_connection(u_min_dist, u_idx)
 
-                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
+                # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
 
                 # Remove the min_idx and its corresponding dist
-                key_to_remove = np.argmin(cdists)
-                valid_keys = np.delete(valid_keys, key_to_remove)
-                cdists = np.delete(cdists, key_to_remove)
-                self.recluster(u_idx, valid_keys, cdists)
+                valid_keys = np.delete(valid_keys, c_min)
+                cdists = np.delete(cdists, c_min)
 
-            # dist[minIdx] <= thrwc and ns[minIdx] < nsr
-            elif (u_min_dist <= self.thr_wc) and not min_clust.is_robust:
-                # Connect u_clust and min_clust
-                u_clust.add_connection(u_min_dist, min_idx)
-                min_clust.add_connection(u_min_dist, u_idx)
-
-                # print(f'Adding connection to {u_clust}, total: {len(u_clust.connections)}')
-
-                # Remove the min_idx and its corresponding dist
-                key_to_remove = np.argmin(cdists)
-                valid_keys = np.delete(valid_keys, key_to_remove)
-                cdists = np.delete(cdists, key_to_remove)
-                self.recluster(u_idx, valid_keys, cdists)
-
-        # dist[minIdx] <= thrf
-        elif u_min_dist <= self.thr_f:
-            # Fuse u_clust and min_clust
-            self.fuse_clusters(u_idx, min_idx)
-            self.recluster(*self.compute_distances(u_idx))
-
-        # dist[minidx] <= thrwc and ns[minidx] >= nsr
-        elif (u_min_dist <= self.thr_wc) and min_clust.is_robust:
-            # Connect u_clust and min_clust
-            u_clust.add_connection(u_min_dist, min_idx)
-            min_clust.add_connection(u_min_dist, u_idx)
-
-            # print(f'Adding connection to {u_idx}, total: {len(u_clust.connections)}')
-
-            # Remove the min_idx and its corresponding dist
-            key_to_remove = np.argmin(cdists)
-            valid_keys = np.delete(valid_keys, key_to_remove)
-            cdists = np.delete(cdists, key_to_remove)
-            self.recluster(u_idx, valid_keys, cdists)
+            return
 
 
 if __name__ == "__main__":

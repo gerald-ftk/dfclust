@@ -27,6 +27,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("-d", "--data", default="data/test.npz")
     ap.add_argument("-c", "--cutoff", type=int, default=5000)
+    ap.add_argument(
+        "-g",
+        "--graph",
+        action="store_true",
+        help="show graph of execution time per sample",
+    )
     args = ap.parse_args()
 
     print(f"loading npz from disk...")
@@ -127,25 +133,26 @@ if __name__ == "__main__":
 
     show(p)
 
-    p2 = figure(
-        title="Time per Sample",
-        x_axis_label="Sample Number",
-        y_axis_label="Time (ms)",
-        sizing_mode="stretch_both",
-    )
-    line2 = p2.line(
-        list(range(len(samples))),
-        times_per_sample,
-        legend_label="Time per Sample",
-        line_width=2,
-    )
+    if args.graph:
+        p2 = figure(
+            title="Time per Sample",
+            x_axis_label="Sample Number",
+            y_axis_label="Time (ms)",
+            sizing_mode="stretch_both",
+        )
+        line2 = p2.line(
+            list(range(len(samples))),
+            times_per_sample,
+            legend_label="Time per Sample",
+            line_width=2,
+        )
 
-    circle2 = p2.circle(
-        list(range(len(samples))), times_per_sample, size=5, color="navy", alpha=0.5
-    )
-    hover2 = HoverTool(mode="vline", line_policy="nearest")
-    hover2.tooltips = [("Sample", "@x"), ("Time (ms)", "@y")]
-    hover2.renderers = [line2]
-    p2.add_tools(hover2)
+        circle2 = p2.circle(
+            list(range(len(samples))), times_per_sample, size=5, color="navy", alpha=0.5
+        )
+        hover2 = HoverTool(mode="vline", line_policy="nearest")
+        hover2.tooltips = [("Sample", "@x"), ("Time (ms)", "@y")]
+        hover2.renderers = [line2]
+        p2.add_tools(hover2)
 
-    show(p2)
+        show(p2)
