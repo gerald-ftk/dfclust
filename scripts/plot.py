@@ -43,14 +43,15 @@ if __name__ == "__main__":
     # Initialize tqdm progress bar
     pbar = tqdm(total=len(samples), desc="Adding samples")
 
-    # Loop through samples
+    times_per_sample = []
+
     for sample in samples:
         start_time = time.time()  # Start time measurement
         graph.add_sample(sample)
         elapsed_time = (time.time() - start_time) * 1000  # Time in milliseconds
+        times_per_sample.append(elapsed_time)  # Store time
 
-        # Update progress bar with custom description showing time in milliseconds
-        pbar.set_description(f"Adding samples (avg {elapsed_time:.2f} ms/it)")
+        # Update progress bar
         pbar.update(1)
 
     pbar.close()
@@ -125,3 +126,26 @@ if __name__ == "__main__":
     p.add_tools(hover)
 
     show(p)
+
+    p2 = figure(
+        title="Time per Sample",
+        x_axis_label="Sample Number",
+        y_axis_label="Time (ms)",
+        sizing_mode="stretch_both",
+    )
+    line2 = p2.line(
+        list(range(len(samples))),
+        times_per_sample,
+        legend_label="Time per Sample",
+        line_width=2,
+    )
+
+    circle2 = p2.circle(
+        list(range(len(samples))), times_per_sample, size=5, color="navy", alpha=0.5
+    )
+    hover2 = HoverTool(mode="vline", line_policy="nearest")
+    hover2.tooltips = [("Sample", "@x"), ("Time (ms)", "@y")]
+    hover2.renderers = [line2]
+    p2.add_tools(hover2)
+
+    show(p2)
