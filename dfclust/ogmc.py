@@ -219,7 +219,7 @@ class OGMCGraph:
         return labels
 
     @property
-    def _labels_with_noise(self, min_cluster_size=10) -> np.ndarray:
+    def _labels_with_noise(self, min_cluster_size=50) -> np.ndarray:
         """
         Return labels for each sample, but if a label's count is less than min_cluster_size,
         replace it with -1 indicating noise.

@@ -33,12 +33,14 @@ if __name__ == "__main__":
         action="store_true",
         help="show graph of execution time per sample",
     )
+    ap.add_argument('--npz_labels', action='store_true', help='plots labels from the npz')
     args = ap.parse_args()
 
     print(f"loading npz from disk...")
     with np.load(f"{args.data}") as f:
         samples = f["features"][: args.cutoff]
         image_urls = f["urls"][: args.cutoff] if "urls" in f else None
+        labels = f['labels'][: args.cutoff]
 
     # Use UMAP to reduce dimensionality
     umap_2d = UMAP(n_components=2, n_jobs=-1).fit_transform(samples)
@@ -51,19 +53,20 @@ if __name__ == "__main__":
 
     times_per_sample = []
 
-    for sample in samples:
-        start_time = time.time()  # Start time measurement
-        graph.add_sample(sample)
-        elapsed_time = (time.time() - start_time) * 1000  # Time in milliseconds
-        times_per_sample.append(elapsed_time)  # Store time
+    if not args.npz_labels:
+        for sample in samples:
+            start_time = time.time()  # Start time measurement
+            graph.add_sample(sample)
+            elapsed_time = (time.time() - start_time) * 1000  # Time in milliseconds
+            times_per_sample.append(elapsed_time)  # Store time
 
-        # Update progress bar
-        pbar.update(1)
+            # Update progress bar
+            pbar.update(1)
 
-    pbar.close()
+        pbar.close()
 
-    # Get labels
-    labels = graph._labels_with_noise
+        # Get labels
+        labels = graph._labels_with_noise
     label_str = labels.astype(str)
 
     # Create a linear color mapping based on the number of unique labels
