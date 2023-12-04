@@ -48,7 +48,9 @@ def bcubed_score(l1: np.ndarray, l2: np.ndarray) -> float:
         cluster_label = l1[idx]
         truth_label = l2[idx]
 
-        intersection_size = len(np.intersect1d(clusters[cluster_label], truths[truth_label]))
+        intersection_size = len(
+            np.intersect1d(clusters[cluster_label], truths[truth_label])
+        )
         precision = intersection_size / len(clusters[cluster_label])
         recall = intersection_size / len(truths[truth_label])
 
@@ -63,24 +65,29 @@ def bcubed_score(l1: np.ndarray, l2: np.ndarray) -> float:
     f_score = 2 * (avg_precision * avg_recall) / (avg_precision + avg_recall)
     return f_score
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import argparse
+
     ap = argparse.ArgumentParser()
-    ap.add_argument('-d', '--dataset', default='data/4339.npz')
+    ap.add_argument("-d", "--dataset", default="data/4339.npz")
+    ap.add_argument("-u", "--update_frequency", type=int, default=1000)
     args = ap.parse_args()
 
     with np.load(args.dataset) as f:
-        features = f['features']
-        labels = f['labels']
+        features = f["features"]
+        labels = f["labels"]
 
-    ogmc = OGMCGraph()
+    ogmc = OGMCGraph(thr_f=5, nsr=5, ncr=5, thr_sc=0.99, thr_wc=1.12)
 
     with tqdm(total=len(features), desc="BCubed F-score: N/A") as pbar:
         for i, feature in enumerate(features):
             ogmc.add_sample(feature)
 
-            if i > 0:  # Compute F-score only if there is more than one label
-                f_score = bcubed_score(ogmc._labels_with_noise[:i+1], labels[:i+1])
+            if i % args.update_frequency == 0 and i > 0:
+                f_score = bcubed_score(
+                    ogmc._labels_with_noise[: i + 1], labels[: i + 1]
+                )
                 pbar.set_description(f"BCubed F-score: {f_score:.4f}")
 
             # Update progress bar

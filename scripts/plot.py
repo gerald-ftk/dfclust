@@ -25,7 +25,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("-d", "--data", default="data/test.npz")
+    ap.add_argument("-d", "--data", default="data/4339.npz")
     ap.add_argument("-c", "--cutoff", type=int, default=5000)
     ap.add_argument(
         "-g",
@@ -33,16 +33,19 @@ if __name__ == "__main__":
         action="store_true",
         help="show graph of execution time per sample",
     )
-    ap.add_argument('--npz_labels', action='store_true', help='plots labels from the npz')
+    ap.add_argument(
+        "--npz_labels", action="store_true", help="plots labels from the npz"
+    )
     args = ap.parse_args()
 
     print(f"loading npz from disk...")
     with np.load(f"{args.data}") as f:
         samples = f["features"][: args.cutoff]
         image_urls = f["urls"][: args.cutoff] if "urls" in f else None
-        labels = f['labels'][: args.cutoff]
+        labels = f["labels"][: args.cutoff]
 
     # Use UMAP to reduce dimensionality
+    print(f'fitting into projection...')
     umap_2d = UMAP(n_components=2, n_jobs=-1).fit_transform(samples)
 
     # Cluster using OGMCGraph
